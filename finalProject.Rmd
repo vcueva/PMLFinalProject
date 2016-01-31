@@ -1,0 +1,123 @@
+---
+title: "Practical Machine Learning Final Project"
+author: "Victor de la Cueva"
+date: "Friday, January 29, 2016"
+output: html_document
+---
+
+##Summary
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+This project uses data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants (look References at end to know the data source) in order to predict the manner in which they did the exercise, using any of the other variables. This is the "classe" variable in the training set.  
+
+This report describes how the model is built, how cross validation is used, what the expected out of sample error is, and why these choices were did. At the end, the final fitted model (prediction model) is used to predict 20 different test cases.  
+
+##General Description
+There is a general procedure to prediction study design that is followed in this project. The general procedure and the decision for this project is the follows:
+
+1. Define your error rate. The error rate has to be very low because the final fit model must be applied to a test set of 20 data and the predictions are used to answer a quiz. It is necessary to answer correctly all the question. A error rato less that 3% is needed. The error rate obtained is explined in section "Error rate".
+2. Split data into training, testing and validation (optional). The training and testing data are given for the project and, for this reason, this step is not necessary.
+3. On the training set pick features. This is one of the main steps and there are many approaches to do it. The procedure used in this project is explain in section "Selecting Features".
+4. On the training set pick prediction function. The function for preduction is explained in section "fitting the model".
+5. If no validation, apply 1x to test set. In this projecto a validation is not applied, and the fitted model is applied to the test set and the procedure is explained in section "Predicting data in test set".
+
+##Including libraries
+The first step in the project is to include the libraries who are needed to use the functions for a prediction project. In this project the libraries are: caret, randomForest and ggplot2.
+
+```{r}
+library(caret)
+library(randomForest)
+library(ggplot2)
+```
+
+## Reading and Cleaning the training file
+first, the complete training data file is read.
+
+```{r}
+dataA <- read.csv('pml-training.csv')
+```
+
+Now, it is necessary to delete colums with a very few data. In this case, the columns with more than 95% NA and 95% blank values are deleted.
+
+```{r}
+data<-dataA[, colSums(is.na(dataA)) <= 0.95*nrow(dataA)]
+dataB <- data==''
+data<-data[, colSums(dataB) <= 0.95*nrow(data)]
+```
+
+Obviosly, columns like indexes (column X) or time and name have a perfect correlation with class but these are not adding any information to the prediction. A plot of column X is shown in next plot where it is possible observe a perfect correlation.
+
+```{r, echo = FALSE}
+qplot(X, classe,colour=classe,data=dataA)
+```
+
+Then, it is necessary to delete column "X", because it is only an index, and the column "user_name", because it contains only the name and, obviously, it is completly correlated with "classe". Columns about time, "raw_timestamp_part_1", "raw_timestamp_part_2" and "cvtd_timestamp" and columns about time window, like "new_window" and "num_window", are deleted too. Finally, columns about total quantities are deleted because they are related to the number of accelerometer that does not add any information for prediction.
+
+```{r}
+data <- data[,!(names(data) %in% c("X", "user_name", "new_window", "num_window","raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp"))]
+data <- data[,!(names(data) %in% c("total_accel_belt", "total_accel_arm", "total_accel_dumbbell", "total_accel_forearm"))]
+```
+
+## Selecting Features
+Only important features must be selected because algorithms consumes more time with a high number of features. One possibility is to use Cross Validation but it is very time consumming because it proves all features adding one each step.For this reason we decide to use another approach by mean correlation analysis. In this approach it is necessary to delete all highly correlated in pair columns. It means all columns with correlation > 0.75 in pairs. The procedure is:
+
+1. Calculate the corretation matrix (among every features) 
+2. Select indexes of highly correlated columns
+3. Obtain the final data for training with only the low correlated columns
+
+```{r}
+correlationMatrix <- cor(data[,-49])
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
+dataTraining <- data[,-highlyCorrelated]
+```
+
+we are now working with only 20 features containing in "dataTraining"
+
+##Fitting the model
+In order to fit the model the Random Forest algorithm is selected because it is usually one of the two top performing algorithms along with boosting in prediction contests. The procedure is:
+
+1. Get the predictors: all columns except "classe"
+2. Get the decision variable "classe"
+3. Set the seed to obtain the same result in reproduction
+4. Fit the model using Random Forest Algorithm
+
+```{r}
+predictors <- dataTraining[,!(names(dataTraining) %in% c("classe"))]
+decision <- dataTraining$classe
+set.seed(133)
+modFit <- randomForest(predictors, decision)
+```
+
+## Error rate
+The next table shows the "modFit" variable where it is possible to see that the estimate of error rate is only 1.29%.
+
+```{r, echo=FALSE}
+modFit
+```
+
+## Predicting data in test set
+Now that the model is fitting, it is necessary to use it in order to obstain a prediction for the testing data file. The precedure is:
+
+1. Read the testing data
+2. Select the same columns in "testing" like in "dataTraining"
+3. Predict the testing data values
+
+```{r}
+testing <- read.csv("pml-testing.csv")
+testing <- testing[, (names(testing) %in% names(dataTraining))]
+predictions <- predict(modFit, testing)
+```
+
+Finally, we can look the final predictions in variable "predictions"
+
+```{r, echo=FALSE}
+predictions
+```
+
+This results obatain 20/20 rigth answers in the project quiz.
+
+## Reference
+Data set was taken from:
+
+* Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements.Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-3
+
